@@ -171,8 +171,16 @@ private :
         bool  cplexpstr;
         bool  firstspxcos;
         bool  firstcplcos;
+        bool  blksw;
+        bool  dithflag;
+        bool  chinspx;
+        bool  chincpl;
+        bool  spxcoe;
+        bool  cplcoe;
         int8u frmchexpstr;
         int8u convexpstr;
+        int8u spxblnd;
+        int8u mstrspxco;
     };
     Aud_Chan_Blk aud_chan_blk[MAX_CHANNELS];
 };

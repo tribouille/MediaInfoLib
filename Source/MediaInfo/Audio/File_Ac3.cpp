@@ -2082,9 +2082,9 @@ void File_Ac3::Core_Frame()
             for(int8u blk = 0; blk < numblks; ++blk)
             {
                 if (aud_blks[blk].cplinu==1)
-                    Get_S1 (2, aud_blks[blk].cplexpstr,            "cplexpstr[x]");
+                    Get_S1 (2, aud_blks[blk].cplexpstr,             "cplexpstr[x]");
                 for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
-                    Get_S1(2, aud_blks[blk].chexpstr[Pos],         "chexpstr[blk][ch]");
+                    Get_S1(2, aud_blks[blk].chexpstr[Pos],          "chexpstr[blk][ch]");
             }
         }
         else
@@ -2094,22 +2094,22 @@ void File_Ac3::Core_Frame()
             for (int8u blk = 0; blk < numblks; ++blk)
                 ncplblks += aud_blks[blk].cplinu;
             if (acmod > 0x1 && ncplblks > 0)
-                Get_S1(5, frmcplexpstr,                            "frmcplexpstr");
+                Get_S1(5, frmcplexpstr,                             "frmcplexpstr");
             for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
-                Get_S1(5, aud_chan_blk[Pos].frmchexpstr,           "frmchexpstr[ch]");
+                Get_S1(5, aud_chan_blk[Pos].frmchexpstr,            "frmchexpstr[ch]");
         }
         if (lfeon)
             for (int8u blk = 0; blk < numblks; ++blk)
-                Get_SB(aud_blks[blk].lfeexpstr,                    "lfeexpstr[blk]");
+                Get_SB(aud_blks[blk].lfeexpstr,                     "lfeexpstr[blk]");
 
         if (strmtyp == 0x0)
         {
             bool convexpstre = true;
             if (numblkscod!=0x3)
-                Get_SB (convexpstre,                               "convexpstre");
+                Get_SB (convexpstre,                                "convexpstre");
             if (convexpstre)
                 for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
-                    Get_S1(5, aud_chan_blk[Pos].convexpstr,        "convexpstr[ch]");
+                    Get_S1(5, aud_chan_blk[Pos].convexpstr,         "convexpstr[ch]");
         }
 
         if (ahte)
@@ -2126,7 +2126,7 @@ void File_Ac3::Core_Frame()
 
             bool cplahtinu = false;
             if (ncplblks==6 && ncplregs==1)
-                Get_SB (cplahtinu,                                 "cplahtinu");
+                Get_SB (cplahtinu,                                  "cplahtinu");
             for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
             {
                 int8u nchregs = 0;
@@ -2138,7 +2138,7 @@ void File_Ac3::Core_Frame()
 
                 bool chahtinu = false;
                 if (nchregs==1)
-                    Get_SB (chahtinu,                              "chahtinu[ch]");
+                    Get_SB (chahtinu,                               "chahtinu[ch]");
             }
 
             if (lfeon)
@@ -2152,23 +2152,23 @@ void File_Ac3::Core_Frame()
 
                 bool lfeahtinu = false;
                 if (nlferegs==1)
-                    Get_SB (lfeahtinu,                             "lfeahtinu");
+                    Get_SB (lfeahtinu,                              "lfeahtinu");
             }
         }
 
         if (snroffststr)
         {
-            Skip_S1 (6,                                            "frmcsnroffst");
-            Skip_S1 (4,                                            "frmfsnroffst");
+            Skip_S1 (6,                                             "frmcsnroffst");
+            Skip_S1 (4,                                             "frmfsnroffst");
         }
 
         if (transproce)
         {
             for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
             {
-                TEST_SB_SKIP(                                      "chintransproc[ch]");
-                    Skip_S2(10,                                    "transprocloc[ch]");
-                    Skip_S1(8,                                     "transproclen[ch]");
+                TEST_SB_SKIP(                                       "chintransproc[ch]");
+                    Skip_S2(10,                                     "transprocloc[ch]");
+                    Skip_S1(8,                                      "transproclen[ch]");
                 TEST_SB_END();
             }
         }
@@ -2177,8 +2177,8 @@ void File_Ac3::Core_Frame()
         {
             for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
             {
-                TEST_SB_SKIP(                                      "chinspxatten[ch]");
-                    Skip_S1(5,                                     "spxattencod[ch]");
+                TEST_SB_SKIP(                                       "chinspxatten[ch]");
+                    Skip_S1(5,                                      "spxattencod[ch]");
                 TEST_SB_END();
             }
         }
@@ -2186,7 +2186,7 @@ void File_Ac3::Core_Frame()
         bool blkstrtinfoe = false;
         int8u blkstrtinfo = 0;
         if (numblkscod != 0x0)
-            Get_SB (blkstrtinfoe,                               "blkstrtinfoe");
+            Get_SB (blkstrtinfoe,                                   "blkstrtinfoe");
         if (blkstrtinfoe)
             blkstrtinfo = (numblks - 1) * (4 + ceil(log2(frmsiz + 1)));
 
@@ -2203,7 +2203,376 @@ void File_Ac3::Core_Frame()
         for (int8u blk = 0; blk < numblks; ++blk)
         {
             Element_Begin1("audblk");
-            //TODO
+            if (blkswe)
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    Get_SB (aud_chan_blk[Pos].blksw,                "blksw[ch]");
+            else
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    aud_chan_blk[Pos].blksw = false;
+
+            if (dithflage)
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    Get_SB (aud_chan_blk[Pos].dithflag,             "dithflag[ch]");
+            else
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    aud_chan_blk[Pos].dithflag = true;
+
+            int8u dynrng = 0;
+            int8u dynrng2 = 0;
+            TEST_SB_SKIP(                                           "dynrnge");
+                Get_S1 (8, dynrng,                                  "dynrng");
+            TEST_SB_END();
+
+            if (acmod==0x0)
+            {
+                TEST_SB_SKIP(                                       "dynrng2e");
+                    Get_S1 (8, dynrng,                              "dynrng2");
+                TEST_SB_END();
+            }
+
+            int8u spx_begin_subbnd, spx_end_subbnd;
+            int8u spxbegf = 0;
+            bool spxbndstrc[256];
+            bool spxstre = true;
+            bool spxinu = false;
+            if (blk!=0)
+                Get_SB (spxstre,                                    "spxstre");
+            if (spxstre)
+            {
+                Get_SB (spxinu,                                     "spxstre");
+                if (spxinu)
+                {
+                    if (acmod==0x1)
+                        aud_chan_blk[0].chinspx = true;
+                    else
+                    {
+                        for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                            Get_SB (aud_chan_blk[Pos].chinspx,      "chinspx[ch]");
+                    }
+
+                    int8u spxstrtf, spxendf;
+
+                    Get_S1 (2, spxstrtf,                            "spxstrtf");
+                    Get_S1 (3, spxbegf,                             "spxbegf");
+                    Get_S1 (3, spxendf,                             "spxendf");
+
+                    if (spxbegf<6)
+                        spx_begin_subbnd = spxbegf + 2;
+                    else
+                        spx_begin_subbnd = spxbegf * 2 - 3;
+                    if (spxendf < 3)
+                        spx_end_subbnd = spxendf + 5;
+                    else
+                        spx_end_subbnd = spxendf * 2 + 3;
+
+                    TEST_SB_SKIP(                                   "spxbndstrce");
+                        for (int8u bnd = spx_begin_subbnd+1; bnd < spx_end_subbnd; ++bnd)
+                            Get_SB (spxbndstrc[bnd],                "spxbndstrc[bnd]");
+                    TEST_SB_END();
+                }
+                else
+                {
+                    for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    {
+                        aud_chan_blk[Pos].chinspx = false;
+                        aud_chan_blk[Pos].firstspxcos = true;
+                    }
+                }
+            }
+
+            if (spxinu)
+            {
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                {
+                    if (aud_chan_blk[Pos].chinspx)
+                    {
+                        if (aud_chan_blk[Pos].firstspxcos)
+                        {
+                            aud_chan_blk[Pos].spxcoe = true;
+                            aud_chan_blk[Pos].firstspxcos = false;
+                        }
+                        else
+                            Get_SB (aud_chan_blk[Pos].spxcoe,       "spxcoe[ch]");
+
+                        if (aud_chan_blk[Pos].spxcoe)
+                        {
+                            Get_S1 (5, aud_chan_blk[Pos].spxblnd,   "spxblnd[ch]");
+                            Get_S1 (2, aud_chan_blk[Pos].mstrspxco, "mstrspxco[ch]");
+
+                            int8u nspxbnds = 1;
+                            int8u spxbndsztab[256];
+                            spxbndsztab[0] = 12;
+                            for (int8u bnd = spx_begin_subbnd+1; bnd < spx_end_subbnd; ++bnd)
+                            {
+                                if (spxbndstrc[bnd] == false)
+                                {
+                                    spxbndsztab[nspxbnds] = 12;
+                                    ++nspxbnds;
+                                }
+                                else
+                                    spxbndsztab[nspxbnds - 1] += 12;
+                            }
+
+                            for (int8u bnd = 0; bnd < nspxbnds; ++bnd)
+                            {
+                                Skip_S1 (4,                         "spxcoexp[ch][bnd]");
+                                Skip_S1 (2,                         "spxcomant[ch][bnd]");
+                            }
+                        }
+                    }
+                    else
+                        aud_chan_blk[Pos].firstspxcos = true;
+                }
+            }
+
+            bool  ecplinu = false;
+            bool  phsflginu = false;
+            int8u ncplsubnd = 0;
+            if (aud_blks[blk].cplstre)
+            {
+                if (aud_blks[blk].cplinu)
+                {
+                    Get_SB (ecplinu,                                "ecplinu");
+
+                    if (acmod==0x2)
+                    {
+                        aud_chan_blk[0].chincpl = true;
+                        aud_chan_blk[1].chincpl = true;
+                    }
+                    else
+                    {
+                        for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                            Get_SB (aud_chan_blk[1].chincpl,        "chincpl[ch]");
+                    }
+
+                    if (ecplinu == false)
+                    {
+                        int8u cplbegf, cplendf = 0;
+                        if (acmod==0x2)
+                            Get_SB (phsflginu,                      "phsflginu");
+                        Get_S1 (4, cplbegf,                         "cplbegf");
+
+                        if (spxinu==false)
+                            Get_S1 (4, cplendf,                     "cplendf");
+                        else
+                        {
+                            if (spxbegf < 6)
+                                cplendf = spxbegf - 2;
+                            else
+                                cplendf = (spxbegf * 2) - 7;
+                        }
+
+                        ncplsubnd = 3 + cplendf - cplbegf;
+                        TEST_SB_SKIP(                              "cplbndstrce");
+                        for (int8u bnd = 1; bnd < ncplsubnd; ++bnd)
+                            Skip_SB(                               "cplbndstrc[bnd]");
+                        TEST_SB_END();
+                    }
+                    else
+                    {
+                        int8u ecplbegf, ecplendf = 0;
+                        int16u ecpl_begin_subbnd = 0, ecpl_end_subbnd = 0;
+                        Get_S1 (4, ecplbegf,                       "ecplbegf");
+                        if (ecplbegf<3)
+                            ecpl_begin_subbnd = ecplbegf * 2;
+                        else if (ecplbegf<13)
+                            ecpl_begin_subbnd = ecplbegf + 2;
+                        else
+                            ecpl_begin_subbnd = ecplbegf * 2 - 10;
+
+                        if (spxinu==false)
+                        {
+                            Get_S1 (4, ecplendf,                   "ecplendf");
+                            ecpl_end_subbnd = ecplendf + 7;
+                        }
+                        else
+                        {
+                            if (spxbegf < 6)
+                                ecpl_end_subbnd = spxbegf + 5;
+                            else
+                                ecpl_end_subbnd = spxbegf * 2;
+                        }
+                        TEST_SB_SKIP(                              "ecplbndstrce");
+                            int16u max = 9;
+                            if (max < ecpl_begin_subbnd+1)
+                                max = ecpl_begin_subbnd+1;
+                            for (int16u sbnd = max; sbnd < ecpl_end_subbnd; ++sbnd)
+                                Skip_SB(                           "cplbndstrc[bnd]");
+                        TEST_SB_END();
+                    }
+                }
+                else
+                {
+                    for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    {
+                        aud_chan_blk[Pos].chincpl = false;
+                        aud_chan_blk[Pos].firstcplcos = true;
+                    }
+                    firstcplleak = true;
+                }
+            }
+
+            if (aud_blks[blk].cplinu)
+            {
+                if (ecplinu==0)
+                {
+                    for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    {
+                        if(aud_chan_blk[Pos].chincpl)
+                        {
+                            if(aud_chan_blk[Pos].firstcplcos)
+                            {
+                                aud_chan_blk[Pos].cplcoe = true;
+                                aud_chan_blk[Pos].firstcplcos = false;
+                            }
+                            else
+                                Get_SB(aud_chan_blk[Pos].cplcoe,   "cplcoe[ch]");
+
+                            if (aud_chan_blk[Pos].cplcoe)
+                            {
+                                Skip_S1 (2,                        "mstrcplco[ch]");
+                                /* ncplbnd derived from ncplsubnd and cplbndstrc */
+                                int16u ncplbnd = 0;
+                                for (int16u bnd = 0; bnd < ncplbnd; bnd++)
+                                {
+                                    // cplcoexp[ch][bnd]
+                                    // ........................................................ 4
+                                    // cplcomant[ch][bnd]
+                                    //  ....................................................... 4
+                                }
+                            }
+                        }
+                        else
+                        {
+                            aud_chan_blk[Pos].firstcplcos = true;
+                        }
+                    }
+                    if (acmod==0x2 && phsflginu && (aud_chan_blk[0].cplcoe || aud_chan_blk[1].cplcoe))
+                    {
+                        //             for(bnd = 0; bnd < ncplbnd; bnd++)
+                        //             {phsflg[bnd]}.................................. 1
+                    }
+                }
+                else
+                {
+            //                  firstchincpl   =   -1
+            //                      reserved
+            //                       1
+            //                      for(ch = 0; ch < nfchans; ch++)
+            //                      {
+            //                          if(chincpl[ch])
+            //                          {
+            //                              if(firstchincpl == -1) {firstchincpl = ch}
+            //                              if(firstcplcos[ch])
+            //                              {
+            //                                                    ecplparam1e[ch]   =   1
+            //                                                    if (ch > firstchincpl) {rsvdfieldse[ch] = 1}
+            //                                                    else   {rsvdfieldse[ch]   =   0}
+            //                                                                      firstcplcos[ch]   =   0
+            //                              }
+            //                              else /* !firstcplcos[ch] */
+            //                              {
+            //                                  ecplparam1e[ch]
+            //                                   ............................................................. 1
+            //                                  if(ch   >   firstchincpl)
+            //                                  {rsvdfieldse[ch]}
+            //                                    1
+            //                                  else   {rsvdfieldse[ch]   =   0}
+            //                              }
+            //                              if(ecplparam1e[ch])
+            //                              {
+            //                                  /* necplbnd derived from ecpl_begin_subbnd, ecpl_end_subbnd, and ecplbndstrc */
+            //                                  for(bnd = 0; bnd < necplbnd; bnd++)
+            //                                  {ecplamp[ch][bnd]}
+            //                                   ...................... 5
+            //                              }
+            //                              if(rsvdfieldse[ch])
+            //                              {
+            //                                  reserved
+            //                                  ................................................... 9 x (necplbnd - 1)
+            //                              }
+            //                              if(ch   >   firstchincpl)
+            //                              {reserved}
+            //                              1
+            //                          }
+            //                          else /* !chincpl[ch] */
+            //                          {
+            //                                             firstcplcos[ch]   =   1
+            //                          }
+            //                      } /* ch */
+                }
+            }
+
+            // /* these fields for rematrixing operation in the 2/0 mode */
+            // if(acmod == 0x2) /* if in 2/0 mode */
+            // {
+            //     if (blk == 0) {rematstr = 1}
+            //     else
+            //     {rematstr} .........................................................................
+            //         1
+            //             if(rematstr)
+            //             {
+            //                 /*
+            //                   nrematbd determined from cplinu, ecplinu, spxinu, cplbegf, ecplbegf and spxbegf */
+            //                 for(bnd = 0; bnd < nrematbd; bnd++)
+            //                 {rematflg[bnd]}..................................
+            //                     1
+            //                         }
+            // }
+            // /* this field for channel bandwidth code */
+            // for(ch = 0; ch < nfchans; ch++)
+            // {
+            //     if(chexpstr[blk][ch] != reuse)
+            //     {
+            //         if((!chincpl[ch]) && (!chinspx[ch]))
+            //         {chbwcod[ch]}...................................
+            //             6
+            //                 }
+            // }
+            // /* these fields for exponents */
+            // if(cplinu[blk]) /* exponents for the coupling channel */
+            // {
+            //     if(cplexpstr[blk] != reuse)
+            //     {
+            //                  cplabsexp
+            //                      ............................................................................
+            //                      4
+            //                      /* ncplgrps derived from cplexpstr, cplbegf, cplendf, ecplinu, ecpl_begin_subbnd, and ecpl_end_subbnd */
+            //                      for(grp = 0; grp< ncplgrps; grp++)
+            //                      {cplexps[grp]}....................................
+            //                      7
+            //                          }
+            // }
+            // for(ch = 0; ch < nfchans; ch++) /* exponents for full bandwidth channels */
+            // {
+            //     if(chexpstr[blk][ch] != reuse)
+            //     {
+            //                  exps[ch][0]
+            //                      ..........................................................................
+            //                      4
+            //                      /* nchgrps derived from chexpstr[ch], and endmant[ch] */
+            //                      for(grp = 1; grp <= nchgrps[ch]; grp++)
+            //                      {exps[ch][grp]}..............................
+            //                      7
+            //                                   gainrng[ch]
+            //                          ..........................................................................
+            //                          2
+            //                          }
+            // }
+            // if(lfeon) /* exponents for the low frequency effects channel */
+            // {
+            //     if(lfeexpstr[blk] != reuse)
+            //     {
+            //                  lfeexps[0]
+            //                      ...........................................................................
+            //                      4
+            //                      nlfegrps = 2
+            //                      for(grp = 1; grp <= nlfegrps; grp++)
+            //                      {lfeexps[grp]}..................................
+            //                      7
+            //                          }
+            // }
+
             Element_End0();
         }
         Element_End0();
