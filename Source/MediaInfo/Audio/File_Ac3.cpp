@@ -1734,6 +1734,8 @@ void File_Ac3::Core_Frame()
     int8u  strmtyp=0, substreamid=0, acmod=0, bsmod=0, dsurmod=0;
     bool   compre=false, compr2e=false, dynrnge=false, dynrng2e=false;
     bool   lfeon=false, chanmape=false;
+
+    bool firstcplleak = false;
     if (bsid<=0x09)
     {
         Element_Begin1("synchinfo");
@@ -1743,6 +1745,7 @@ void File_Ac3::Core_Frame()
             Get_S1 (2, fscod,                                       "fscod - Sample Rate Code"); Param_Info2(AC3_SamplingRate[fscod], " Hz");
             Get_S1 (6, frmsizecod,                                  "frmsizecod - Frame Size Code"); if (frmsizecod/2<19) {Param_Info2(AC3_BitRate[frmsizecod/2]*1000, " bps");}
         Element_End0();
+
         Element_Begin1("bsi");
             Get_S1 (5, bsid,                                        "bsid - Bit Stream Identification");
             Get_S1 (3, bsmod,                                       "bsmod - Bit Stream Mode"); Param_Info1(AC3_Mode[bsmod]);
@@ -1788,6 +1791,7 @@ void File_Ac3::Core_Frame()
                 Skip_S1(14,                                         "timecod2"); //Note: if timecod is used, change the bitstream parsing for bsid==0x06
             TEST_SB_END();
             TEST_SB_SKIP(                                           "addbsie");
+                //EMDF can be here
                 int8u addbsil;
                 Get_S1 (6, addbsil,                                 "addbsil");
                 for (int8u Pos=0; Pos<=addbsil; Pos++) //addbsil+1 bytes
@@ -1810,6 +1814,7 @@ void File_Ac3::Core_Frame()
             }
             BS_End();
         Element_End0();
+        //EMDF can be here
         Skip_XX(Element_Size-Element_Offset,                        "audblk(continue)+5*audblk+auxdata+errorcheck");
     }
     else if (bsid>0x0A && bsid<=0x10)
@@ -1840,7 +1845,7 @@ void File_Ac3::Core_Frame()
             TEST_SB_END();
             if (acmod==0) //1+1 mode
             {
-                Get_S1 (5, dialnorm2,                              "dialnorm2");
+                Get_S1 (5, dialnorm2,                               "dialnorm2");
                 TEST_SB_GET(compr2e,                                "compr2e");
                     Get_S1 (8, compr2,                              "compr2");
                 TEST_SB_END();
@@ -1851,7 +1856,358 @@ void File_Ac3::Core_Frame()
                     Get_S2(16, chanmap,                             "chanmap"); Param_Info1(AC3_chanmap_ChannelPositions(chanmap));
                 TEST_SB_END();
             }
+            TEST_SB_SKIP(                                           "mixmdate");
+                int8u dmixmod, ltrtcmixlev, lorocmixlev, ltrtsurmixlev, lorosurmixlev, mixdef;
+                if(acmod > 0x2)
+                    Get_S1 (2, dmixmod,                             "dmixmod");
+                if((acmod&0x1) && (acmod>0x2))
+                {
+                    Get_S1 (3, ltrtcmixlev,                         "ltrtcmixlev");
+                    Get_S1 (3, lorocmixlev,                         "lorocmixlev");
+                }
+                if(acmod>0x4)
+                {
+                    Get_S1 (3, ltrtsurmixlev,                       "ltrtsurmixlev");
+                    Get_S1 (3, lorosurmixlev,                       "lorosurmixlev");
+                }
+                if(lfeon)
+                {
+                    TEST_SB_SKIP(                                   "lfemixlevcode");
+                        Skip_S1 (5,                                 "lfemixlevcod");
+                    TEST_SB_END();
+                }
+                if(strmtyp == 0x0)
+                {
+                    TEST_SB_SKIP(                                   "pgmscle");
+                        Skip_S1 (6,                                 "pgmscl");
+                    TEST_SB_END();
+                    if (acmod == 0x0)
+                    {
+                        TEST_SB_SKIP(                               "pgmscle12e");
+                            Skip_S1 (6,                             "pgmscl12e");
+                        TEST_SB_END();
+                    }
+                    TEST_SB_SKIP(                                   "extpgmscle");
+                        Skip_S1 (6,                                 "extpgmscl");
+                    TEST_SB_END();
+                    Get_S1 (2, mixdef,                              "mixdef");
+                    if(mixdef == 0x1)
+                    {
+                        Skip_S1 (1,                                 "premixcmpsel");
+                        Skip_S1 (1,                                 "drcsrc");
+                        Skip_S1 (3,                                 "premixcmpscl");
+                    }
+                    else if(mixdef == 0x2) Skip_S2 (12,             "mixdata");
+                    else if(mixdef == 0x3)
+                    {
+                        int8u mixdeflen;
+                        Get_S1 (5, mixdeflen,                       "mixdeflen");
+                        TEST_SB_SKIP(                               "mixdata2e");
+                            Skip_S1 (6,                             "premixcmpsel");
+                            Skip_S1 (1,                             "drcsrc");
+                            Skip_S1 (3,                             "premixcmpscl");
+                            TEST_SB_SKIP(                           "extpgmlscle");
+                                Skip_S1 (4,                         "extpgmlscl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "extpgmcscle");
+                                Skip_S1 (4,                         "extpgmcscl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "extpgmrscle");
+                                Skip_S1 (4,                         "extpgmrscl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "extpgmlssle");
+                                Skip_S1 (4,                         "extpgmlssl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "extpgmrssle");
+                                Skip_S1 (4,                         "extpgmrssl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "extpgmlfescle");
+                                Skip_S1 (4,                         "extpgmlfescl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "dmixscle");
+                                Skip_S1 (4,                         "dmixscl");
+                            TEST_SB_END();
+                            TEST_SB_SKIP(                           "addche");
+                                TEST_SB_SKIP(                       "extpgmaux1scle");
+                                    Skip_S1 (4,                     "extpgmaux1scl");
+                                TEST_SB_END();
+                                TEST_SB_SKIP(                       "extpgmaux2scle");
+                                    Skip_S1 (4,                     "extpgmaux2scl");
+                                TEST_SB_END();
+                            TEST_SB_END();
+                        TEST_SB_END();
+                        TEST_SB_SKIP(                               "mixdata3e");
+                            Skip_S1 (5,                             "spchdat");
+                            TEST_SB_SKIP(                           "addspchdate");
+                                Skip_S1 (5,                         "spchdat1");
+                                Skip_S1 (2,                         "spchan1att");
+                                TEST_SB_SKIP(                       "addspdat1e");
+                                    Skip_S1 (5,                     "spchdat2");
+                                    Skip_S1 (2,                     "spchan2att");
+                                TEST_SB_END();
+                            TEST_SB_END();
+                        TEST_SB_END();
+                        Skip_S2 (8*(mixdeflen+2),                   "mixdata");
+                        //Skip_S1 (,                                 "mixdatafill");
+                    }
+                    if(acmod<0x2)
+                    {
+                        TEST_SB_SKIP(                               "paninfoe");
+                            Skip_S1 (6,                             "panmean");
+                            Skip_S1 (8,                             "paninfo");
+                        TEST_SB_END();
+                        if(acmod==0x0)
+                        {
+                            TEST_SB_SKIP(                           "paninfo2e");
+                               Skip_S1 (6,                          "panmean2");
+                               Skip_S1 (8,                          "paninfo2");
+                            TEST_SB_END();
+                        }
+                    }
+                    TEST_SB_SKIP(                                   "frmmixcfginfoe");
+                        if(numblkscod==0x0)
+                        {
+                            int8u blkmixcfginfo;
+                            Get_S1 (5, blkmixcfginfo,               "blkmixcfginfo[0]");
+                            aud_blks[0].blkmixcfginfo = blkmixcfginfo;
+                        }
+                        else
+                        {
+                            int8u nb_blocks_per_syncframe = numblkscod == 3 ? 6 : (numblkscod + 1);
+                            for (int8u blk = 0; blk < nb_blocks_per_syncframe; ++blk)
+                            {
+                                TEST_SB_SKIP(                       "blkmixcfginfoe");
+                                    int8u blkmixcfginfo;
+                                    Get_S1 (5, blkmixcfginfo,       "blkmixcfginfo[x]");
+                                    aud_blks[blk].blkmixcfginfo = blkmixcfginfo;
+                                TEST_SB_END();
+                            }
+                        }
+                    TEST_SB_END();
+                }
+            TEST_SB_END();
+
+            TEST_SB_SKIP(                                           "infomdate");
+                Skip_S1(3,                                          "bsmod");
+                Skip_SB(                                            "copyrightb - Copyright Bit");
+                Skip_SB(                                            "origbs - Original Bit Stream");
+                if (acmod==0x2)
+                {
+                    Skip_S1(2,                                      "dsurmod");
+                    Skip_S1(2,                                      "dheadphonmod");
+                }
+                if (acmod>=0x6)
+                    Skip_S1(2,                                      "dsurexmod");
+                TEST_SB_SKIP(                                       "audprodie");
+                    Skip_S1(5,                                      "mixlevel");
+                    Skip_S1(2,                                      "roomtyp");
+                    Skip_S1(1,                                      "adconvtyp");
+                TEST_SB_END();
+                if (acmod==0x0)
+                {
+                    TEST_SB_SKIP(                                   "audprodi2e");
+                        Skip_S1(5,                                  "mixlevel2");
+                        Skip_S1(2,                                  "roomtyp2");
+                        Skip_S1(1,                                  "adconvtyp2");
+                    TEST_SB_END();
+                }
+                if (fscod < 0x3)
+                    Skip_S1(1,                                      "sourcefscod");
+            TEST_SB_END();
+
+            if (strmtyp==0x0 && numblkscod!=0x3)
+                Skip_S1(1,                                          "convsync");
+
+            if (strmtyp == 0x2)
+            {
+                int8u blkid = 0;
+                if (numblkscod==0x3)
+                    blkid = 1;
+                else
+                    Get_S1(1, blkid,                                "blkid");
+                if (blkid)
+                    Get_S1(6, frmsizecod,                           "frmsizecod");
+            }
+
+            TEST_SB_SKIP(                                           "addbsie");
+                int8u addbsil;
+                Get_S1 (6, addbsil,                                 "addbsil");
+                size_t addbsilen = (addbsil + 1) * 8;
+                Skip_BS(addbsilen,                                  "addbsi");
+            TEST_SB_END();
         Element_End0();
+
+        int8u numblks = numblkscod == 3 ? 6 : (numblkscod + 1);
+
+        Element_Begin1("audfrm");
+        int8u snroffststr, ncplblks = 0;
+        bool expstre = true, ahte = false;
+        bool transproce, blkswe, dithflage, bamode, frmfgaincode, dbaflde, skipflde, spxattene;
+        if (numblkscod==0x3)
+        {
+            Get_SB(expstre,                                         "expstre");
+            Get_SB(ahte,                                            "ahte");
+        }
+        Get_S1 (2, snroffststr,                                     "snroffststr");
+        Get_SB (transproce,                                         "transproce");
+        Get_SB (blkswe,                                             "blkswe");
+        Get_SB (dithflage,                                          "dithflage");
+        Get_SB (bamode,                                             "bamode");
+        Get_SB (frmfgaincode,                                       "frmfgaincode");
+        Get_SB (dbaflde,                                            "dbaflde");
+        Get_SB (skipflde,                                           "skipflde");
+        Get_SB (spxattene,                                          "spxattene");
+
+        if (acmod>0x1)
+        {
+            aud_blks[0].cplstre = 1;
+            aud_blks[0].cplinu = 0;
+            for (int8u blk = 1; blk < numblks; ++blk)
+            {
+                Get_SB (aud_blks[blk].cplstre,                      "cplstre[x]");
+                if (aud_blks[blk].cplstre==1)
+                    Get_SB (aud_blks[blk].cplinu,                   "cplinu[x]");
+                else
+                    aud_blks[blk].cplinu = aud_blks[blk - 1].cplinu;
+            }
+        }
+        else
+        {
+            for(int8u blk = 0; blk < numblks; ++blk)
+                aud_blks[blk].cplinu = 0;
+        }
+
+        if (expstre)
+        {
+            for(int8u blk = 0; blk < numblks; ++blk)
+            {
+                if (aud_blks[blk].cplinu==1)
+                    Get_S1 (2, aud_blks[blk].cplexpstr,            "cplexpstr[x]");
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    Get_S1(2, aud_blks[blk].chexpstr[Pos],         "chexpstr[blk][ch]");
+            }
+        }
+        else
+        {
+            int8u frmcplexpstr = 0;
+            ncplblks = 0;
+            for (int8u blk = 0; blk < numblks; ++blk)
+                ncplblks += aud_blks[blk].cplinu;
+            if (acmod > 0x1 && ncplblks > 0)
+                Get_S1(5, frmcplexpstr,                            "frmcplexpstr");
+            for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                Get_S1(5, aud_chan_blk[Pos].frmchexpstr,           "frmchexpstr[ch]");
+        }
+        if (lfeon)
+            for (int8u blk = 0; blk < numblks; ++blk)
+                Get_SB(aud_blks[blk].lfeexpstr,                    "lfeexpstr[blk]");
+
+        if (strmtyp == 0x0)
+        {
+            bool convexpstre = true;
+            if (numblkscod!=0x3)
+                Get_SB (convexpstre,                               "convexpstre");
+            if (convexpstre)
+                for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+                    Get_S1(5, aud_chan_blk[Pos].convexpstr,        "convexpstr[ch]");
+        }
+
+        if (ahte)
+        {
+            ncplblks = 0;
+
+            int8u ncplregs = 0;
+            for (int8u blk = 0; blk < numblks; ++blk)
+            {
+                //reuse corresponds to 0
+                if (aud_blks[blk].cplstre == 1 || aud_blks[blk].cplexpstr != 0)
+                    ++ncplregs;
+            }
+
+            bool cplahtinu = false;
+            if (ncplblks==6 && ncplregs==1)
+                Get_SB (cplahtinu,                                 "cplahtinu");
+            for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+            {
+                int8u nchregs = 0;
+                for (int8u blk = 0; blk < numblks; ++blk)
+                {
+                    if (aud_blks[blk].chexpstr[Pos]!=0)
+                        ++nchregs;
+                }
+
+                bool chahtinu = false;
+                if (nchregs==1)
+                    Get_SB (chahtinu,                              "chahtinu[ch]");
+            }
+
+            if (lfeon)
+            {
+                int8u nlferegs = 0;
+                for (int8u blk = 0; blk < numblks; ++blk)
+                {
+                    if (aud_blks[blk].lfeexpstr!=false)
+                        ++nlferegs;
+                }
+
+                bool lfeahtinu = false;
+                if (nlferegs==1)
+                    Get_SB (lfeahtinu,                             "lfeahtinu");
+            }
+        }
+
+        if (snroffststr)
+        {
+            Skip_S1 (6,                                            "frmcsnroffst");
+            Skip_S1 (4,                                            "frmfsnroffst");
+        }
+
+        if (transproce)
+        {
+            for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+            {
+                TEST_SB_SKIP(                                      "chintransproc[ch]");
+                    Skip_S2(10,                                    "transprocloc[ch]");
+                    Skip_S1(8,                                     "transproclen[ch]");
+                TEST_SB_END();
+            }
+        }
+
+        if (spxattene)
+        {
+            for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+            {
+                TEST_SB_SKIP(                                      "chinspxatten[ch]");
+                    Skip_S1(5,                                     "spxattencod[ch]");
+                TEST_SB_END();
+            }
+        }
+
+        bool blkstrtinfoe = false;
+        int8u blkstrtinfo = 0;
+        if (numblkscod != 0x0)
+            Get_SB (blkstrtinfoe,                               "blkstrtinfoe");
+        if (blkstrtinfoe)
+            blkstrtinfo = (numblks - 1) * (4 + ceil(log2(frmsiz + 1)));
+
+        /* these fields for syntax state initialization */
+        for (int8u Pos=0; Pos<AC3_Channels[acmod]; ++Pos)
+        {
+            aud_chan_blk[Pos].firstspxcos = true;
+            aud_chan_blk[Pos].firstcplcos = true;
+        }
+        firstcplleak = true;
+        Element_End0();
+
+        Element_Begin1("audblks");
+        for (int8u blk = 0; blk < numblks; ++blk)
+        {
+            Element_Begin1("audblk");
+            //TODO
+            Element_End0();
+        }
+        Element_End0();
+
         if (Data_BS_Remain()<17)
         {
             BS_End();
@@ -1859,9 +2215,15 @@ void File_Ac3::Core_Frame()
         }
         else
         {
+            Element_Begin1("emdf_sync");
+            int16u syncword, emdf_container_length;
+            Get_S2 (16, syncword, "syncword");
+            Get_S2 (16, emdf_container_length, "emdf_container_length");
+            Element_End0();
             Element_Begin1("errorcheck");
             size_t BitsUpToEndOfFrame=(frmsiz*2)*8-(Bits_Begin-Data_BS_Remain());
-            Skip_BS(BitsUpToEndOfFrame-17,                          "bsi(continue)+audfrm+x*audblk+auxdata+errorcheck");
+            //EMDF can be here
+            Skip_BS(BitsUpToEndOfFrame-17,                          "audfrm(continue)+x*audblk+auxdata+errorcheck");
             Skip_SB(                                                "encinfo");
             BS_End();
             Skip_B2(                                                "crc2");

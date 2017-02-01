@@ -151,6 +151,30 @@ private :
     bool   IgnoreCrc_Done;
     bool   IgnoreCrc;
     float64 TimeStamp_Content;
+
+#define MAX_AUD_BLK 6
+#define MAX_CHANNELS 5
+    struct Aud_Blk
+    {
+        bool  cplstre;
+        bool  cplinu;
+        bool  lfeexpstr;
+        int8u blkmixcfginfo;
+        int8u cplexpstr;
+
+        int8u chexpstr[MAX_CHANNELS];
+    };
+    Aud_Blk aud_blks[MAX_AUD_BLK];
+
+    struct Aud_Chan_Blk
+    {
+        bool  cplexpstr;
+        bool  firstspxcos;
+        bool  firstcplcos;
+        int8u frmchexpstr;
+        int8u convexpstr;
+    };
+    Aud_Chan_Blk aud_chan_blk[MAX_CHANNELS];
 };
 
 } //NameSpace
