@@ -65,6 +65,29 @@ private :
     void Core();
     void Core_Frame();
     void HD();
+    void EMDF();
+    int emdf_sync(int16u& container_len);
+    int emdf_container(int16u container_len);
+    void emdf_payload_config();
+    void emdf_protection();
+
+    int  external_data();
+
+    int  object_audio_metadata_payload();
+
+    int   joint_object_coding();
+    int   joc_header();
+    int   joc_info();
+    int   joc_data_point_info();
+    int   joc_data();
+    int   joc_ext_data();
+    int8u joc_dmx_config_idx;
+    int8u joc_num_objects;
+    int8u joc_ext_config_idx;
+
+    int  program_assignment();
+    void Get_V4 (int8u  Bits, int32u  &Info, const char* Name);
+    void Skip_V4(int8u  Bits,                const char* Name);
     void TimeStamp();
     void dac3();
     void dec3();

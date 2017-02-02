@@ -644,6 +644,27 @@ static const int32u AC3_MLP_Resolution[16]=
     0,
 };
 
+//---------------------------------------------------------------------------
+const char* Ac3_emdf_payload_id[16]
+{
+    "Container End",
+    "Programme loudness data",
+    "Programme information",
+    "E-AC-3 substream structure",
+    "Dynamic range compression data for portable devices",
+    "Programme Language",
+    "External Data",
+    "Headphone rendering data",
+    "",
+    "",
+    "",
+    "OAMD",
+    "",
+    "",
+    "JOC",
+    "",
+};
+
 //***************************************************************************
 // Constructor/Destructor
 //***************************************************************************
@@ -2577,6 +2598,7 @@ void File_Ac3::Core_Frame()
         }
         Element_End0();
 
+        EMDF();
         if (Data_BS_Remain()<17)
         {
             BS_End();
@@ -2584,15 +2606,9 @@ void File_Ac3::Core_Frame()
         }
         else
         {
-            Element_Begin1("emdf_sync");
-            int16u syncword, emdf_container_length;
-            Get_S2 (16, syncword, "syncword");
-            Get_S2 (16, emdf_container_length, "emdf_container_length");
-            Element_End0();
-            Element_Begin1("errorcheck");
             size_t BitsUpToEndOfFrame=(frmsiz*2)*8-(Bits_Begin-Data_BS_Remain());
-            //EMDF can be here
-            Skip_BS(BitsUpToEndOfFrame-17,                          "audfrm(continue)+x*audblk+auxdata+errorcheck");
+            Element_Begin1("errorcheck");
+            Skip_BS(BitsUpToEndOfFrame-17,                          "bsi(continue)+audfrm+x*audblk+auxdata+errorcheck");
             Skip_SB(                                                "encinfo");
             BS_End();
             Skip_B2(                                                "crc2");
@@ -2672,6 +2688,535 @@ void File_Ac3::Core_Frame()
             dialnorm2s[dialnorm2]++;
         }
     FILLING_END();
+}
+
+//---------------------------------------------------------------------------
+void File_Ac3::EMDF()
+{
+    //Searching EMDF syncword: 0x5838 || 22584
+    size_t remain = Data_BS_Remain();
+    // size_t start = remain - ((Buffer_Offset + Element_Size) * 8) ;
+    // size_t Tmp_Buffer_Offset = 0;
+
+    // while (Tmp_Buffer_Offset+32<=remain)
+    // {
+    //     int16u Current = 0;
+
+    //     size_t current_offset = Tmp_Buffer_Offset / 8;
+    //     int8u left = Tmp_Buffer_Offset % 8;
+    //     left = 8 - left;
+
+    //     int8u k = 0;
+    //     for (size_t i = 0; i < left; ++i)
+    //         k = k << 1 | 1;
+    //     Current = Buffer[current_offset] & k;
+    //     Current <<= 8;
+
+    //     current_offset += 1;
+    //     Current |= Buffer[current_offset];
+    //     Current <<= (8 - left);
+    //     current_offset += 1;
+
+    //     if (left != 8)
+    //     {
+    //         k = 0;
+    //         for (size_t i = 0; i < 8 - left; ++i)
+    //             k = k << 1 | 1;
+    //         Current |= (Buffer[current_offset] & k) >> (8 - left);
+    //     }
+
+    //     if (Current == 0x5838)
+    //     {
+    //         found = true;
+    //         break;
+    //     }
+    //     ++Tmp_Buffer_Offset;
+    // }
+
+    while (Data_BS_Remain() > 17)
+    {
+        int16u Current;
+        Peek_S2(16, Current);
+        if (Current == 0x5838)
+        {
+            int16u container_len = 0;
+            Element_Begin1("emdf");
+            if (emdf_sync(container_len) >= 0)
+            {
+                if (emdf_container(container_len) >= 0)
+                    break;
+                else
+                    Element_End0();
+            }
+            Element_End0();
+        }
+        Skip_SB("skipping");
+    }
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::emdf_sync(int16u& container_len)
+{
+    int16u sync_word;
+    Element_Begin1("emdf_sync");
+        Get_S2(16, sync_word,                                   "syncword");
+        Get_S2(16, container_len,                               "emdf_container_length");
+        if (container_len*8>Data_BS_Remain())
+        {
+            Element_Info("Wrong sync");
+            Element_End0();
+            return -1;
+        }
+    Element_End0();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::emdf_container(int16u container_len)
+{
+    size_t Start = Data_BS_Remain();
+    int32u version, key_id;
+    Element_Begin1("emdf_container");
+        Get_S4 (2, version,                                     "emdf_version");
+        if (version == 3)
+        {
+            int32u add;
+            Get_V4(2, add,                                      "emdf_version addition");
+            version += add;
+        }
+        if (version != 0)
+        {
+            Trusted_IsNot("EMDF Version should be set to '0'");
+            return -1;
+        }
+
+        Get_S4 (3, key_id,                                      "key_id");
+        if (key_id == 7)
+        {
+            int32u add;
+            Get_V4 (2, add,                                     "key_id addition");
+            key_id += add;
+        }
+
+        int32u emdf_payload_id = 0;
+        for(;;)
+        {
+            Element_Begin1("emdf");
+            Get_S4 (5, emdf_payload_id,                         "emdf_payload_id");
+            if (emdf_payload_id==0x1F)
+            {
+                int32u add;
+                Get_V4 (5, add,                                 "emdf_payload_id addition");
+                emdf_payload_id += add;
+            }
+
+            if (emdf_payload_id<16)
+                Element_Info(Ac3_emdf_payload_id[emdf_payload_id]);
+            if (emdf_payload_id == 0x00)
+            {
+                Element_End0();
+                break;
+            }
+
+            emdf_payload_config();
+
+            int32u emdf_payload_size = 0;
+            Get_V4 (8, emdf_payload_size,                       "emdf_payload_size");
+
+            //Payload Buffer: to be stocked and parse
+            size_t before_object_audio = Data_BS_Remain();
+            size_t emdf_payload_len = 8 * emdf_payload_size;
+
+            switch (emdf_payload_id)
+            {
+                case 6:  external_data(); break;
+                case 11: object_audio_metadata_payload(); break;
+                case 14: joint_object_coding(); break;
+                default: ;
+            }
+            emdf_payload_len -= (before_object_audio - Data_BS_Remain());
+
+            size_t left = (container_len*8) - (Start - Data_BS_Remain());
+            if (emdf_payload_len > left)
+            {
+                Skip_BS(left,                              "(Unparsed overrun emdf_payload_bytes)");
+                Element_End0();
+                Element_End0();
+                return 0;
+            }
+
+            Skip_BS(emdf_payload_len,                      "(Unparsed emdf_payload_bytes)");
+            Element_End0();
+        }
+
+        emdf_protection();
+    Element_End0();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+void File_Ac3::emdf_payload_config()
+{
+    Element_Begin1("emdf_payload_config");
+        bool smploffste = false;
+        Get_SB(smploffste,                                  "smploffste");
+        if (smploffste)
+        {
+            int16u smploffst;
+            Get_S2(11, smploffst,                           "smploffst");
+            Skip_S1(1,                                      "reserved");
+        }
+
+        TEST_SB_SKIP(                                       "duratione");
+            Skip_V4(11,                                     "duration");
+        TEST_SB_END();
+        TEST_SB_SKIP(                                       "groupide");
+            Skip_V4(2,                                      "groupid");
+        TEST_SB_END();
+        TEST_SB_SKIP(                                       "codecdatae");
+            Skip_S1(8,                                      "reserved");
+        TEST_SB_END();
+
+        bool discard_unknown_payload = false;
+        Get_SB(discard_unknown_payload,                     "discard_unknown_payload");
+        if (!discard_unknown_payload)
+        {
+            bool payload_frame_aligned = false;
+            if (!smploffste)
+            {
+                Get_SB(payload_frame_aligned,               "payload_frame_aligned");
+                if (payload_frame_aligned)
+                {
+                    Skip_SB(                                "create_duplicate");
+                    Skip_SB(                                "remove_duplicate");
+                }
+            }
+
+            if (smploffste || payload_frame_aligned)
+            {
+                int8u priority, proc_allowed;
+                Get_S1(5, priority,                         "priority");
+                Get_S1(2, proc_allowed,                     "proc_allowed");
+            }
+        }
+    Element_End();
+}
+
+//---------------------------------------------------------------------------
+void File_Ac3::emdf_protection()
+{
+    int8u len_primary = 0, len_second = 0;
+    Element_Begin1("emdf_protection");
+        Get_S1(2, len_primary,                              "protection_length_primary");
+        Get_S1(2, len_second,                               "protection_length_secondary");
+
+        switch (len_primary)
+        {
+            case 0:
+                //Reserved
+                break;
+            case 1:
+                //8
+                Skip_S1(8,                                  "protection_bits_primary");
+                break;
+            case 2:
+                //32
+                Skip_S4(32,                                 "protection_bits_primary");
+                break;
+            case 3:
+                //128
+                Skip_BS(128,                                "protection_bits_primary");
+                break;
+            default:
+                //Cannot append, read only 2 bits
+                break;
+        };
+
+        switch (len_second)
+        {
+            case 0:
+                //0
+                break;
+            case 1:
+                //8
+                Skip_S1(8,                                  "protection_bits_secondary");
+                break;
+            case 2:
+                //32
+                Skip_S4(32,                                 "protection_bits_secondary");
+                break;
+            case 3:
+                //128
+                Skip_BS(128,                                "protection_bits_secondary");
+                break;
+            default:
+                //Cannot append, read only 2 bits
+                break;
+        };
+
+    Element_End();
+}
+
+//---------------------------------------------------------------------------
+void File_Ac3::Get_V4(int8u  Bits, int32u  &Info, const char* Name)
+{
+    Info = 0;
+
+    #if MEDIAINFO_TRACE
+        if (Trace_Activated)
+        {
+            int8u Count = 0;
+            do
+            {
+                Info += BS->Get1(Bits);
+                Count += Bits + 1;
+            }
+            while (BS->GetB());
+            Param(Name, Info);
+            Param_Info(__T("(")+Ztring::ToZtring(Count)+__T(" bits)"));
+        }
+        else
+    #endif //MEDIAINFO_TRACE
+        {
+            do
+                Info += BS->Get1(Bits);
+            while (BS->GetB());
+        }
+}
+
+//---------------------------------------------------------------------------
+void File_Ac3::Skip_V4(int8u  Bits, const char* Name)
+{
+    #if MEDIAINFO_TRACE
+        if (Trace_Activated)
+        {
+            int8u Info = 0;
+            int8u Count = 0;
+            do
+            {
+                Info += BS->Get1(Bits);
+                Count += Bits + 1;
+            }
+            while (BS->GetB());
+            Param(Name, Info);
+            Param_Info(__T("(")+Ztring::ToZtring(Count)+__T(" bits)"));
+        }
+        else
+    #endif //MEDIAINFO_TRACE
+        {
+            do
+                BS->Skip(Bits);
+            while (BS->GetB());
+        }
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::external_data()
+{
+    Element_Begin1("external_data");
+    bool frame_sequence;
+    Get_SB (frame_sequence,                                 "frame_sequence");
+    if (frame_sequence)
+    {
+        Skip_SB(                                            "sequence_start");
+        Skip_SB(                                            "sequence_end");
+        Skip_S2(16,                                         "external_data_chunk");
+    }
+    else
+    {
+        int32u external_data_len = 0;
+        Get_V4 (7, external_data_len,                       "external_data_length");
+        Skip_BS(external_data_len * 8,                      "external_data");
+    }
+    int8u fill_len = Data_BS_Remain() % 8;
+    Skip_S1(fill_len,                                       "fill_bits");
+    Element_End0();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::object_audio_metadata_payload()
+{
+    Element_Begin1("object_audio_metadata_payload");
+        int8u oa_md_version_bits;
+        Get_S1(2, oa_md_version_bits,                       "oa_md_version_bits");
+        if (oa_md_version_bits == 0x3)
+        {
+            int8u oa_md_version_bits_ext;
+            Get_S1(3, oa_md_version_bits_ext,               "oa_md_version_bits_ext");
+            oa_md_version_bits += oa_md_version_bits_ext;
+        }
+
+        int8u object_count_bits;
+        Get_S1(5, object_count_bits,                        "object_count_bits");
+        if (object_count_bits == 0x1F)
+        {
+            int8u object_count_bits_ext;
+            Get_S1(7, object_count_bits_ext,                "object_count_bits_ext");
+            object_count_bits += object_count_bits_ext;
+        }
+
+        program_assignment();
+        //TODO: next
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::program_assignment() //TODO use another bitstreams
+{
+    Element_Begin1("program_assignment");
+        bool b_dyn_object_only_program = false;
+        Get_SB(b_dyn_object_only_program,                   "b_dyn_object_only_program");
+        if (b_dyn_object_only_program)
+        {
+            Skip_SB(                                        "b_lfe_present");
+        }
+        else
+        {
+            int8u content_description_mask;
+            Get_S1(4, content_description_mask,             "content_description_mask");
+            if (content_description_mask & 0x1)
+            {
+                bool b_bed_object_chan_distribute, b_multiple_bed_instances_present;
+
+                Get_SB(b_bed_object_chan_distribute,        "b_bed_object_chan_distribute");
+                Get_SB(b_multiple_bed_instances_present,    "b_multiple_bed_instances_present");
+                int32u num_bed_instances = 1;
+                if (b_multiple_bed_instances_present)
+                {
+                    int8u num_bed_instances_bits = 0;
+                    Get_S1(3, num_bed_instances_bits,       "num_bed_instances_bits");
+                    num_bed_instances = num_bed_instances_bits + 2;
+                }
+
+                for (int32u bed = 0; bed < num_bed_instances; ++bed)
+                {
+                    Element_Begin1("Bed");
+                    bool b_lfe_only = true;
+                    Get_SB(b_lfe_only,                      "b_lfe_only");
+                    if (!b_lfe_only)
+                    {
+                        bool b_standard_chan_assign;
+                        Get_SB(b_standard_chan_assign,      "b_standard_chan_assign");
+                        if (b_standard_chan_assign)
+                            Skip_S2(10,                     "bed_channel_assignment_mask");
+                        else
+                            Skip_S3(17,                     "nonstd_bed_channel_assignment_mask");
+                    }
+                    Element_End();
+                }
+            }
+
+            if (content_description_mask & 0x2)
+                Skip_S1(3,                                  "intermediate_spatial_format_idx");
+
+            if (content_description_mask & 0x4)
+            {
+                int8u num_dynamic_objects_bits;
+                Get_S1(5, num_dynamic_objects_bits,         "num_dynamic_objects_bits");
+                if (num_dynamic_objects_bits == 0x1F)
+                {
+                    int8u num_dynamic_objects_bits_ext = 0;
+                    Get_S1(7, num_dynamic_objects_bits_ext, "num_dynamic_objects_bits_ext");
+                    num_dynamic_objects_bits += num_dynamic_objects_bits_ext;
+                }
+            }
+
+            if (content_description_mask & 0x8)
+            {
+                int8u reserved_data_size_bits;
+                Get_S1(4, reserved_data_size_bits,          "reserved_data_size_bits");
+                int8u padding = 8 - (reserved_data_size_bits % 8);
+                Skip_S1(reserved_data_size_bits,            "reserved_data()");
+                Skip_S1(padding,                            "padding");
+            }
+        }
+
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::joint_object_coding()
+{
+    Element_Begin1("joint_object_coding");
+        if (joc_header() < 0)
+            return -1;
+        if (joc_info() < 0)
+            return -1;
+        if (joc_data() < 0)
+            return -1;
+        if (joc_ext_config_idx > 0)
+        {
+            if (joc_ext_data() < 0)
+                return -1;
+        }
+        //padding
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::joc_header()
+{
+    Element_Begin1("joc_header");
+        Get_S1(3, joc_dmx_config_idx,                               "joc_dmx_config_idx");
+        int8u joc_num_objects_bits = 0;
+        Get_S1(6, joc_num_objects_bits,                             "joc_num_objects_bits");
+        joc_num_objects = joc_num_objects_bits + 1;
+        Get_S1(3, joc_ext_config_idx,                               "joc_ext_config_idx");
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::joc_info()
+{
+    Element_Begin1("joc_info");
+    int8u joc_clipgain_x_bits, joc_clipgain_y_bits;
+    int16u joc_seq_count_bits;
+    Get_S1 (3, joc_clipgain_x_bits,                                 "joc_clipgain_x_bits");
+    Get_S1 (5, joc_clipgain_y_bits,                                 "joc_clipgain_y_bits");
+    Get_S2 (10, joc_seq_count_bits,                                 "joc_seq_count_bits");
+    for (int8u obj = 0; obj < joc_num_objects; obj++)
+    {
+        TEST_SB_SKIP("b_joc_obj_present[obj]");
+            // joc_num_bands_idx[obj];
+            // ; .................................................................. 3;
+            // b_joc_sparse[obj];
+            // ; ....................................................................... 1;
+            // joc_num_quant_idx[obj];
+            // ; .................................................................. 1;
+            // joc_data_point_info(obj);
+        TEST_SB_END();
+    }
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::joc_data_point_info()
+{
+    Element_Begin1("joc_data_point_info");
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::joc_data()
+{
+    Element_Begin1("joc_data");
+    Element_End();
+    return 0;
+}
+
+//---------------------------------------------------------------------------
+int File_Ac3::joc_ext_data()
+{
+    Element_Begin1("joc_ext_data");
+    Element_End();
+    return 0;
 }
 
 //---------------------------------------------------------------------------
