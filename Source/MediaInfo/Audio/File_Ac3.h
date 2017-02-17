@@ -65,6 +65,8 @@ private :
     void Core();
     void Core_Frame();
     void HD();
+    void aud_chan_blk_init(int8u acmod, int8u cplbegf);
+
     void EMDF();
     int emdf_sync(int16u& container_len);
     int emdf_container(int16u container_len);
@@ -191,19 +193,27 @@ private :
 
     struct Aud_Chan_Blk
     {
-        bool  cplexpstr;
+        bool  blksw;
+        bool  chahtinu;
+        bool  chincpl;
+        bool  chinspx;
+        bool  cplcoe;
+        bool  dithflag;
+        bool  ecplparam1e;
         bool  firstspxcos;
         bool  firstcplcos;
-        bool  blksw;
-        bool  dithflag;
-        bool  chinspx;
-        bool  chincpl;
+        bool  rsvdfieldse;
         bool  spxcoe;
-        bool  cplcoe;
-        int8u frmchexpstr;
+
+        int8u chactivegaqbins; //todo
+        int8u chbwcod;
         int8u convexpstr;
-        int8u spxblnd;
+        int8u deltbae;
+        int8u endmant;
+        int8u frmchexpstr;
         int8u mstrspxco;
+        int8u spxblnd;
+        int8u strtmant;
     };
     Aud_Chan_Blk aud_chan_blk[MAX_CHANNELS];
 };
