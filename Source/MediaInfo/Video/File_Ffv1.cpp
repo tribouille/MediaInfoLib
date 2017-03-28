@@ -482,6 +482,9 @@ File_Ffv1::File_Ffv1()
     sample_aspect_ratio_num = 0;
     sample_aspect_ratio_den = 0;
     KeyFramePassed = false;
+    Frame_Buffer = NULL;
+    Frame_Buffer_Size = 0;
+    slice_coding_mode = 0;
 }
 
 //---------------------------------------------------------------------------
@@ -505,6 +508,13 @@ File_Ffv1::~File_Ffv1()
         plane_states[i] = NULL;
     }
     delete RC; //RC=NULL
+
+    if (Frame_Buffer)
+    {
+        delete Frame_Buffer;
+        Frame_Buffer = NULL;
+        Frame_Buffer_Size = 0;
+    }
 }
 
 //***************************************************************************
@@ -816,6 +826,11 @@ void File_Ffv1::Read_Buffer_Continue()
         Element_End0();
     }
 
+    for (size_t i = 0; i < Frame_Buffer_Size; ++i)
+        printf(" %x", (int8u)Frame_Buffer[i]);
+    printf("\n");
+
+
     FILLING_BEGIN();
         if (Frame_Count==0)
         {
@@ -913,7 +928,7 @@ void File_Ffv1::FrameHeader()
 
     if (!slices)
     {
-        size_t nb_slices = (num_h_slices_minus1 + 1) * (num_v_slices_minus1 + 1);
+        size_t nb_slices = num_h_slices * num_v_slices;
         slices = new Slice[nb_slices];
         current_slice = &slices[0];
     }
@@ -1054,6 +1069,8 @@ void File_Ffv1::FrameHeader()
             }
         }
     FILLING_END();
+
+    create_frame_buffer();
 }
 
 //---------------------------------------------------------------------------
@@ -1135,13 +1152,13 @@ int File_Ffv1::slice(states &States)
         Element_Offset+=RC->BytesUsed();
     }
 
-    #if MEDIAINFO_DECODE
-        //Decode(Buffer, Buffer_Size);
-    #endif //MEDIAINFO_DECODE
+#if MEDIAINFO_DECODE
+    //Decode(Buffer, Buffer_Size);
+#endif //MEDIAINFO_DECODE
 
-    #if MEDIAINFO_TRACE
-        Trace_Activated=Trace_Activated_Save; // Trace is too huge, reactivating after during pixel decoding
-    #endif //MEDIAINFO_TRACE
+#if MEDIAINFO_TRACE
+    Trace_Activated=Trace_Activated_Save; // Trace is too huge, reactivating after during pixel decoding
+#endif //MEDIAINFO_TRACE
 
     return 0;
 }
@@ -1196,7 +1213,6 @@ int File_Ffv1::slice_header(states &States)
     current_slice->w = slice_x2 * Width  / num_h_slices - current_slice->x;
     current_slice->h = slice_y2 * Height / num_v_slices - current_slice->y;
 
-
     int8u plane_count=1+(alpha_plane?1:0);
     if (version < 4 || chroma_planes) // Warning: chroma is considered as 1 plane
         plane_count += 1;
@@ -1207,7 +1223,13 @@ int File_Ffv1::slice_header(states &States)
     Get_RU (States, sample_aspect_ratio_den,                "sample_aspect_ratio den");
     if (version > 3)
     {
-        //TODO
+        Skip_RC(States,                                     "slice_reset_contexts");
+        slice_coding_mode = RC->get_symbol_s(States);
+        if (slice_coding_mode != 1)
+        {
+            current_slice->slice_rct_by_coef = RC->get_symbol_s(States);
+            current_slice->slice_rct_ry_coef = RC->get_symbol_s(States);
+        }
     }
 
     RC->AssignStateTransitions(state_transitions_table);
@@ -1281,11 +1303,15 @@ void File_Ffv1::rgb()
 
     current_slice->run_index = 0;
 
-    for (size_t x = 0; x < c_max; x++) {
-        sample[x][0] = current_slice->sample_buffer +  x * 2      * (current_slice->w + 6) + 3;
+    for (size_t x = 0; x < c_max; x++)
+    {
+        sample[x][0] = current_slice->sample_buffer + x * 2 * (current_slice->w + 6) + 3;
         sample[x][1] = sample[x][0] + current_slice->w + 6;
     }
     memset(current_slice->sample_buffer, 0, 8 * (current_slice->w + 6) * sizeof(*current_slice->sample_buffer));
+
+    int32u linesize = Width;
+    int offset = 1 << bits_per_sample;
 
     for (size_t y = 0; y < current_slice->h; y++)
     {
@@ -1305,9 +1331,52 @@ void File_Ffv1::rgb()
             line((c + 1) / 2, sample[c]);
         }
 
-        #if MEDIAINFO_TRACE_FFV1CONTENT
-            Element_End0();
-        #endif //MEDIAINFO_TRACE_FFV1CONTENT
+#if MEDIAINFO_TRACE_FFV1CONTENT
+        Element_End0();
+#endif //MEDIAINFO_TRACE_FFV1CONTENT
+
+	bool lbd = bits_per_sample <= 8;
+        //Copy the line to the frame buffer
+        for (size_t x = 0; x < current_slice->w; ++x)
+        {
+            int g = sample[0][1][x];
+            int b = sample[1][1][x];
+            int r = sample[2][1][x];
+            int a = 0;
+            if (alpha_plane)
+                a = sample[3][1][x];
+
+            if (slice_coding_mode != 1)
+            {
+                b -= offset;
+                r -= offset;
+                g -= (b * current_slice->slice_rct_by_coef + r * current_slice->slice_rct_ry_coef) >> 2;
+                b += g;
+                r += g;
+            }
+
+            size_t pos = 0;
+	    // out of the slice
+	    pos += current_slice->x;
+            pos += current_slice->y * linesize;
+	    // in the slice
+	    pos += x;
+            pos += y * linesize;
+
+            pos *= 4;
+
+            if (lbd)
+	        *((int32u*)(Frame_Buffer + pos)) = b + (g << 8) + (r << 16) + (a << 24);
+            // else if (sizeof(TYPE) == 4) {
+            //     *((uint16_t*)(src[0] + x*2 + stride[0]*y)) = g;
+            //     *((uint16_t*)(src[1] + x*2 + stride[1]*y)) = b;
+            //     *((uint16_t*)(src[2] + x*2 + stride[2]*y)) = r;
+            // } else {
+            //     *((uint16_t*)(src[0] + x*2 + stride[0]*y)) = b;
+            //     *((uint16_t*)(src[1] + x*2 + stride[1]*y)) = g;
+            //     *((uint16_t*)(src[2] + x*2 + stride[2]*y)) = r;
+            // }
+        }
     }
 
     #if MEDIAINFO_TRACE_FFV1CONTENT
@@ -1762,6 +1831,40 @@ void File_Ffv1::plane_states_clean(states_context_plane states[MAX_QUANT_TABLES]
         delete[] states[i];
         states[i] = NULL;
     }
+}
+
+//---------------------------------------------------------------------------
+int File_Ffv1::create_frame_buffer()
+{
+    if (Frame_Buffer)
+    {
+        delete Frame_Buffer;
+        Frame_Buffer = NULL;
+	Frame_Buffer_Size = 0;
+    }
+
+    size_t h = Height;
+    size_t w = Width;
+
+    if (colorspace_type == 1)
+    {
+        //RGB
+        size_t bits_size = 1;
+        if (bits_per_sample <= 8)
+            bits_size = 1;
+        else if (bits_per_sample <= 16)
+            bits_size = 2;
+        else if (bits_per_sample <= 24)
+            bits_size = 3;
+        else if (bits_per_sample <= 32)
+            bits_size = 4;
+
+        Frame_Buffer_Size = w * h * MAX_PLANES * bits_size;
+        Frame_Buffer = new int8u [Frame_Buffer_Size];
+        memset(Frame_Buffer, 0, Frame_Buffer_Size);
+    }
+
+    return 0;
 }
 
 } //NameSpace

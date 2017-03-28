@@ -63,6 +63,9 @@ public:
 
         for (size_t i = 0; i < MAX_PLANES; ++i)
             contexts[i] = NULL;
+
+        slice_rct_by_coef = 1;
+        slice_rct_ry_coef = 1;
     }
 
     ~Slice()
@@ -96,6 +99,8 @@ public:
     int32u  run_index;
     int32u  run_mode;
     int32s  run_segment_length;
+    int     slice_rct_by_coef;
+    int     slice_rct_ry_coef;
     FFV1::pixel_t* sample_buffer;
 
     class Context
@@ -264,6 +269,7 @@ private :
     int32u  picture_structure;
     int32u  sample_aspect_ratio_num;
     int32u  sample_aspect_ratio_den;
+    int32u  slice_coding_mode;
     int8u   coder_type;
     int8u   colorspace_type;
     int8u   bits_per_sample;
@@ -272,6 +278,8 @@ private :
     bool    alpha_plane;
     bool    is_overflow_16bit;
     state_transitions state_transitions_table;
+    int8u  *Frame_Buffer;
+    size_t  Frame_Buffer_Size;
 
     //TEMP
     static const int32u PREFIX_MAX = 12; //limit
@@ -288,6 +296,7 @@ private :
 
     int32s golomb_rice_decode(int k);
     void plane_states_clean(states_context_plane states[MAX_QUANT_TABLES]);
+    int create_frame_buffer();
 };
 
 } //NameSpace
