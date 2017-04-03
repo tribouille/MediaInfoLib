@@ -29,6 +29,7 @@
 //---------------------------------------------------------------------------
 #include "MediaInfo/Video/File_Ffv1.h"
 #include "MediaInfo/MediaInfo_Config_MediaInfo.h"
+#include "MediaInfo/HashWrapper.h"
 #include "ZenLib/BitStream.h"
 //---------------------------------------------------------------------------
 
@@ -830,6 +831,8 @@ void File_Ffv1::Read_Buffer_Continue()
         printf(" %x", (int8u)Frame_Buffer[i]);
     printf("\n");
 
+    std::string md5;
+    Create_Frame_MD5(md5);
 
     FILLING_BEGIN();
         if (Frame_Count==0)
@@ -1865,6 +1868,13 @@ int File_Ffv1::create_frame_buffer()
     }
 
     return 0;
+}
+
+//---------------------------------------------------------------------------
+void File_Ffv1::Create_Frame_MD5(std::string& md5)
+{
+    md5 = HashWrapper::Generate(HashWrapper::MD5, Frame_Buffer, Frame_Buffer_Size);
+    printf("MD5=%s\n", md5.c_str());
 }
 
 } //NameSpace

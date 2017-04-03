@@ -1490,6 +1490,9 @@ public :
         void    Ibi_Stream_Finish           (int64u, int64u)                    {}
         void    Ibi_Add                     ()                                  {}
     #endif //MEDIAINFO_IBIUSAGE
+
+public:
+        virtual void Create_Frame_MD5 (std::string&) {}
 };
 
 //Helpers

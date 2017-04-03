@@ -189,6 +189,8 @@ public :
     File_Ffv1();
     ~File_Ffv1();
 
+    virtual void Create_Frame_MD5(std::string& md5);
+
     //Input
     int32u Width;
     int32u Height;
