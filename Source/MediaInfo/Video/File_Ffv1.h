@@ -211,7 +211,7 @@ private :
     int    slice_header(states &States);
     int32s get_symbol_with_bias_correlation(Slice::ContextPtr context);
     void rgb();
-    void plane(int32u pos);
+    void plane(int32u pos, int32u plane_idx);
     void line(int pos, FFV1::pixel_t *sample[2]);
     int32s pixel_GR(int32s context);
     int32s pixel_RC(int32s context);
@@ -282,6 +282,10 @@ private :
     state_transitions state_transitions_table;
     int8u  *Frame_Buffer;
     size_t  Frame_Buffer_Size;
+
+    bool    packed;
+    int8u   pixel_stride;
+    int32u  plane_size[MAX_PLANES];
 
     //TEMP
     static const int32u PREFIX_MAX = 12; //limit

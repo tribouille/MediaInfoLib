@@ -827,9 +827,9 @@ void File_Ffv1::Read_Buffer_Continue()
         Element_End0();
     }
 
-    for (size_t i = 0; i < Frame_Buffer_Size; ++i)
-        printf(" %x", (int8u)Frame_Buffer[i]);
-    printf("\n");
+    // for (size_t i = 0; i < Frame_Buffer_Size; ++i)
+    //     printf(" %x", (int8u)Frame_Buffer[i]);
+    // printf("\n");
 
     std::string md5;
     Create_Frame_MD5(md5);
@@ -1118,8 +1118,9 @@ int File_Ffv1::slice(states &States)
 
     if (colorspace_type == 0)
     {
+        pixel_stride = 1;
         // YCbCr
-        plane(0); // Y
+        plane(0, 0); // Y
         if (chroma_planes)
         {
             int32u w = current_slice->w;
@@ -1131,13 +1132,13 @@ int File_Ffv1::slice(states &States)
             current_slice->h = h >> chroma_v_shift;
             if (h & ((1 << chroma_v_shift) - 1))
                 current_slice->h++; //Is ceil
-            plane(1); // Cb
-            plane(1); // Cr
+            plane(1, 1); // Cb
+            plane(1, 2); // Cr
             current_slice->w = w;
             current_slice->h = h;
         }
         if (alpha_plane)
-            plane(2); // Alpha
+            plane(2, 3); // Alpha
     }
     else if (colorspace_type == 1)
         rgb();
@@ -1242,7 +1243,7 @@ int File_Ffv1::slice_header(states &States)
 }
 
 //---------------------------------------------------------------------------
-void File_Ffv1::plane(int32u pos)
+void File_Ffv1::plane(int32u pos, int32u plane_idx)
 {
     #if MEDIAINFO_TRACE_FFV1CONTENT
         Element_Begin1("Plane");
@@ -1264,6 +1265,17 @@ void File_Ffv1::plane(int32u pos)
 
     current_slice->run_index = 0;
 
+    size_t linesize = 0;
+    for (size_t i = 0; i < MAX_PLANES; ++i)
+        linesize += plane_size[i];
+
+    size_t buff_slice_pos = 0;
+    // out of the slice
+    for (size_t i = 0; i < plane_idx; ++i)
+        buff_slice_pos += plane_size[i];
+    buff_slice_pos += current_slice->x;
+    buff_slice_pos += current_slice->y * linesize;
+
     for (size_t y = 0; y < current_slice->h; y++)
     {
         #if MEDIAINFO_TRACE_FFV1CONTENT
@@ -1277,6 +1289,43 @@ void File_Ffv1::plane(int32u pos)
         sample[0][current_slice->w]  = sample[0][current_slice->w - 1];
 
         line(pos, sample);
+
+        if (bits_per_sample <= 8)
+        {
+            for (size_t x = 0; x < current_slice->w; ++x)
+            {
+                size_t pixel_pos = buff_slice_pos;
+                pixel_pos += linesize * y;
+                pixel_pos += pixel_stride * x;
+                for (size_t i = 0; i < plane_idx; ++i)
+                    pixel_pos += plane_size[i];
+	        *((int32u*)(Frame_Buffer + pixel_pos)) = sample[1][x];
+            }
+        }
+        else
+        {
+	    // in the slice
+            if (packed)
+            {
+                size_t pixel_pos = buff_slice_pos;
+                pixel_pos += linesize * y;
+                for (size_t i = 0; i < plane_idx; ++i)
+                    pixel_pos += plane_size[i];
+
+                for (size_t x = 0; x < current_slice->w; ++x)
+                {
+                    printf("%lu\n", current_slice->w);
+                    pixel_pos += pixel_stride * x * 2;
+                    *((int16u*)(Frame_Buffer + pixel_pos)) = sample[1][x];
+                }
+            }
+            // else {
+            //     for (x = 0; x < w; ++x)
+            //     {
+            //         ((uint16_t*)(src + stride*y))[x*pixel_stride] = sample[1][x] << (16 - s->avctx->bits_per_raw_sample) | ((uint16_t **)sample)[1][x] >> (2 * s->avctx->bits_per_raw_sample - 16);
+            //     }
+            // }
+        }
 
         #if MEDIAINFO_TRACE_FFV1CONTENT
             Element_End0();
@@ -1313,7 +1362,7 @@ void File_Ffv1::rgb()
     }
     memset(current_slice->sample_buffer, 0, 8 * (current_slice->w + 6) * sizeof(*current_slice->sample_buffer));
 
-    int32u linesize = Width;
+    int32u linesize = plane_size[0];
     int offset = 1 << bits_per_sample;
 
     for (size_t y = 0; y < current_slice->h; y++)
@@ -1846,26 +1895,78 @@ int File_Ffv1::create_frame_buffer()
 	Frame_Buffer_Size = 0;
     }
 
+    size_t bits_size = 1;
     size_t h = Height;
     size_t w = Width;
+    packed = false;
 
-    if (colorspace_type == 1)
+    if (bits_per_sample <= 8)
+        bits_size = 1;
+    else if (bits_per_sample <= 16)
+        bits_size = 2;
+    else if (bits_per_sample <= 24)
+        bits_size = 3;
+    else if (bits_per_sample <= 32)
+        bits_size = 4;
+
+    if (colorspace_type == 0)
+    {
+        if (0)
+        {
+        }
+        else if (bits_per_sample == 16 && !alpha_plane)
+        {
+            bits_size = 2;
+            packed = true;
+            int32u tmp = 16 * chroma_h_shift + chroma_v_shift;
+            switch (tmp)
+            {
+                case 0x00: //444
+                    plane_size[0] = w * bits_size;
+                    plane_size[1] = w * bits_size;
+                    plane_size[2] = w * bits_size;
+                    if (alpha_plane)
+                        plane_size[3] = Width * bits_size;
+                    else
+                        plane_size[3] = 0;
+                    break;
+                case 0x10: //422
+                    plane_size[0] = w * bits_size;
+                    w /= 2;
+                    plane_size[1] = w * bits_size;
+                    plane_size[2] = w * bits_size;
+                    if (alpha_plane)
+                        plane_size[3] = Width * bits_size;
+                    else
+                        plane_size[3] = 0;
+                    break;
+                case 0x11: //420
+                    plane_size[0] = w * bits_size;
+                    w /= 2;
+                    h /= 2;
+                    plane_size[1] = w * bits_size;
+                    plane_size[2] = w * bits_size;
+                    if (alpha_plane)
+                        plane_size[3] = Width * bits_size;
+                    else
+                        plane_size[3] = 0;
+                    break;
+            };
+        }
+    }
+    else if (colorspace_type == 1)
     {
         //RGB
-        size_t bits_size = 1;
-        if (bits_per_sample <= 8)
-            bits_size = 1;
-        else if (bits_per_sample <= 16)
-            bits_size = 2;
-        else if (bits_per_sample <= 24)
-            bits_size = 3;
-        else if (bits_per_sample <= 32)
-            bits_size = 4;
-
-        Frame_Buffer_Size = w * h * MAX_PLANES * bits_size;
-        Frame_Buffer = new int8u [Frame_Buffer_Size];
-        memset(Frame_Buffer, 0, Frame_Buffer_Size);
+        plane_size[0] = w;
     }
+    else
+    {
+        return -1;
+    }
+
+    Frame_Buffer_Size = w * h * MAX_PLANES * bits_size;
+    Frame_Buffer = new int8u [Frame_Buffer_Size];
+    memset(Frame_Buffer, 0, Frame_Buffer_Size);
 
     return 0;
 }
